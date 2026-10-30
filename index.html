@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Один вопрос…</title>
+<!-- Куда слать события. Пусто = свой /api/event (локальный server.js).
+     Для статического хостинга вписать URL сборщика, например:
+     <meta name="track-endpoint" content="https://script.google.com/macros/s/XXX/exec"> -->
+<meta name="track-endpoint" content="">
 <style>
   :root{
     --bg:#0b0a12; --bg2:#141021;
@@ -514,14 +518,22 @@ const SESSION = (function(){
   }
 })();
 
+/* Приёмник событий. На локальном сервере — свой /api/event,
+   на статическом хостинге (GitHub Pages) — внешний сборщик из meta[name="track-endpoint"]. */
+const TRACK_URL = (function(){
+  const meta = document.querySelector('meta[name="track-endpoint"]');
+  const v = meta && meta.getAttribute('content');
+  return (v && /^https?:\/\//i.test(v)) ? v : '/api/event';
+})();
+
 function track(type, data){
   const payload = Object.assign({ type: type, session: SESSION }, data || {});
   try {
     const body = JSON.stringify(payload);
-    if (navigator.sendBeacon && navigator.sendBeacon('/api/event', new Blob([body], {type:'application/json'}))) return;
+    if (navigator.sendBeacon && navigator.sendBeacon(TRACK_URL, new Blob([body], {type:'application/json'}))) return;
   } catch (e) { /* падаем на fetch ниже */ }
   try {
-    fetch('/api/event', {
+    fetch(TRACK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

@@ -126,6 +126,12 @@
     reset:        { ico:'🧹', title:'Лента очищена', cls:'' }
   };
 
+  /* Источник данных.
+     Пусто  → свой сервер (node server.js): /api/events, /api/stream, /api/reset.
+     URL    → Google Apps Script (apps-script/Code.gs): ?key=…&action=list|reset, опрос раз в 5 с. */
+  var API = '';
+  var KEY = '';
+
   var events = [];
   var seen = Object.create(null);
 
@@ -222,7 +228,10 @@
 
   function load(){
     showErr('');
-    fetch('/api/events?limit=500', { cache:'no-store' })
+    var url = API
+      ? API + '?key=' + encodeURIComponent(KEY) + '&action=list&t=' + Date.now()
+      : '/api/events?limit=500';
+    fetch(url, { cache:'no-store' })
       .then(function(r){
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
@@ -240,6 +249,13 @@
   }
 
   function connect(){
+    if (API){
+      /* Apps Script не умеет SSE — просто опрашиваем раз в 5 секунд */
+      dot.classList.add('on');
+      liveText.textContent = 'live · 5 с';
+      setInterval(load, 5000);
+      return;
+    }
     if (!window.EventSource){ liveText.textContent = 'без live-режима'; return; }
     var es = new EventSource('/api/stream');
     es.onopen = function(){ dot.classList.add('on'); liveText.textContent = 'live'; };
@@ -252,8 +268,11 @@
   document.getElementById('refreshBtn').addEventListener('click', load);
 
   document.getElementById('resetBtn').addEventListener('click', function(){
-    if (!window.confirm('Очистить ленту событий? Файл data/events.jsonl тоже обнулится.')) return;
-    fetch('/api/reset', { method:'POST' })
+    if (!window.confirm('Очистить ленту событий?')) return;
+    var url = API
+      ? API + '?key=' + encodeURIComponent(KEY) + '&action=reset'
+      : '/api/reset';
+    fetch(url, { method:'POST' })
       .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function(){ events = []; seen = Object.create(null); render(); })
       .catch(function(e){ showErr('Не смог очистить: ' + e.message); });
