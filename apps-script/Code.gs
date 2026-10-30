@@ -60,17 +60,31 @@ function doPost(e) {
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
-  if (!ADMIN_KEY || String(p.key || '') !== ADMIN_KEY) return json({ ok: false, error: 'forbidden' });
+  var cb = String(p.callback || '');
+
+  /* JSONP: админка на GitHub Pages не может читать ответ через fetch —
+     Google не отдаёт CORS-заголовки на preflight. <script src> CORS не подчиняется,
+     поэтому при наличии callback оборачиваем JSON в вызов функции. */
+  function out(obj) {
+    if (cb && /^[A-Za-z_$][\w$.]{0,80}$/.test(cb)) {
+      return ContentService
+        .createTextOutput(cb + '(' + JSON.stringify(obj) + ');')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+    return json(obj);
+  }
+
+  if (!ADMIN_KEY || String(p.key || '') !== ADMIN_KEY) return out({ ok: false, error: 'forbidden' });
 
   /* action=ping — проверка связи из админки: не трогает таблицу, отвечает быстро */
-  if (p.action === 'ping') return json({ ok: true, pong: true, ts: Date.now() });
+  if (p.action === 'ping') return out({ ok: true, pong: true, ts: Date.now() });
 
   var sheet = getSheet();
 
   if (p.action === 'reset') {
     var last = sheet.getLastRow();
     if (last > 1) sheet.deleteRows(2, last - 1);
-    return json({ ok: true, events: [] });
+    return out({ ok: true, events: [] });
   }
 
   var values = sheet.getDataRange().getValues();
@@ -91,7 +105,7 @@ function doGet(e) {
     });
   }
   if (events.length > MAX_ROWS) events = events.slice(-MAX_ROWS);
-  return json({ ok: true, source: 'sheets', total: events.length, events: events });
+  return out({ ok: true, source: 'sheets', total: events.length, events: events });
 }
 
 /* Возвращает лист событий. Если SHEET_ID не задан — создаёт таблицу один раз

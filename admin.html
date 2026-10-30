@@ -141,7 +141,14 @@
     if (q && /^https?:\/\//i.test(q)) return q;
     var meta = document.querySelector('meta[name="track-endpoint"]');
     var v = meta && meta.getAttribute('content');
-    return (v && /^https?:\/\//i.test(v)) ? v : '';
+    if (v && /^https?:\/\//i.test(v)) return v;
+    /* Адрес, введённый один раз через ?api=…, запоминаем — иначе после
+       перезагрузки страницы админка снова осталась бы без приёмника. */
+    try {
+      var saved = localStorage.getItem('admin_api');
+      if (saved && /^https?:\/\//i.test(saved)) return saved;
+    } catch (e) { /* приватный режим — работаем без памяти */ }
+    return '';
   })();
 
   /* Свой сервер (node server.js) — это не Apps Script: у него другие адреса
@@ -154,8 +161,17 @@
     var q = new URLSearchParams(location.search).get('key');
     if (q) return q;
     var meta = document.querySelector('meta[name="admin-key"]');
-    return (meta && meta.getAttribute('content')) || '';
+    var v = (meta && meta.getAttribute('content')) || '';
+    if (v) return v;
+    try { return localStorage.getItem('admin_key') || ''; }
+    catch (e) { return ''; }
   })();
+
+  /* Запоминаем то, что пришло в ссылке, чтобы не таскать её с собой каждый раз. */
+  try {
+    if (API) localStorage.setItem('admin_api', API);
+    if (KEY) localStorage.setItem('admin_key', KEY);
+  } catch (e) { /* приватный режим — не критично */ }
 
   var events = [];
   var seen = Object.create(null);
@@ -251,39 +267,102 @@
     render();
   }
 
+  /* Ссылка-конструктор: её достаточно открыть один раз, дальше адрес и ключ
+     запоминаются в localStorage и подставляются автоматически. */
+  function setupHint(){
+    var base = location.origin + location.pathname;
+    return base + '?api=<URL_APPS_SCRIPT>&key=<КЛЮЧ>';
+  }
+
+  /* Apps Script отдаёт Access-Control-Allow-Origin: * только на GET, а на
+     preflight (OPTIONS) — HTML без CORS-заголовков. Поэтому fetch с заголовками
+     или cache:'no-store' браузер блокирует. Обходим через JSONP: <script src>
+     не подчиняется CORS, а Apps Script умеет вернуть callback(...). */
+  var jsonpSeq = 0;
+
+  function jsonp(url, timeoutMs){
+    return new Promise(function(resolve, reject){
+      var cb = '__dt_cb_' + (++jsonpSeq) + '_' + Date.now();
+      var script = document.createElement('script');
+      var done = false;
+
+      function cleanup(){
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try { delete window[cb]; } catch (e) { window[cb] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+
+      var timer = setTimeout(function(){
+        cleanup();
+        reject(new Error('таймаут ответа приёмника'));
+      }, timeoutMs || 15000);
+
+      window[cb] = function(data){ cleanup(); resolve(data); };
+
+      script.onerror = function(){
+        cleanup();
+        reject(new Error('не удалось загрузить ответ приёмника'));
+      };
+
+      script.src = url + '&callback=' + cb;
+      document.head.appendChild(script);
+    });
+  }
+
   function load(){
     showErr('');
     if (!API && !IS_LOCAL){
-      showErr('Админка открыта со статического хостинга, а сервера рядом нет. Укажи приёмник: admin.html?api=<URL Apps Script>&key=<ключ>.');
+      showErr('Приёмник не указан. Открой админку ссылкой вида ' + setupHint() +
+              ' — URL берётся из Apps Script (Deploy → Web app), ключ — из ADMIN_KEY в Code.gs.');
+      return;
+    }
+    if (IS_APPS_SCRIPT && !KEY){
+      showErr('Не указан ключ админки. Добавь &key=<ADMIN_KEY> к ссылке — иначе Apps Script ответит «forbidden».');
       return;
     }
     var url = IS_APPS_SCRIPT
       ? API + '?key=' + encodeURIComponent(KEY) + '&action=list&t=' + Date.now()
       : (API || '') + '/api/events?limit=500';
-    fetch(url, { cache:'no-store' })
-      .then(function(r){
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
+
+    var request = IS_APPS_SCRIPT
+      ? jsonp(url)
+      : fetch(url, { cache:'no-store' }).then(function(r){
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.text();
+        }).then(function(text){
+          try { return JSON.parse(text); }
+          catch (e){ throw new Error('ответ не JSON — проверь, что сервер запущен (node server.js)'); }
+        });
+
+    request
       .then(function(data){
-        if (!data || !Array.isArray(data.events)) throw new Error('неожиданный ответ сервера');
+        if (data && data.ok === false){
+          throw new Error(data.error === 'forbidden'
+            ? 'ключ не подошёл (ADMIN_KEY в Code.gs и &key= в ссылке должны совпадать)'
+            : 'приёмник ответил ошибкой: ' + (data.error || 'без описания'));
+        }
+        if (!data || !Array.isArray(data.events)) throw new Error('в ответе нет списка events');
         events = [];
         seen = Object.create(null);
         for (var i = 0; i < data.events.length; i++) addEvent(data.events[i]);
         render();
+        dot.classList.add('on');
+        liveText.textContent = IS_APPS_SCRIPT ? 'live · 5 с' : 'live';
       })
       .catch(function(e){
-        showErr('Не смог загрузить события: ' + e.message + '. ' + (IS_APPS_SCRIPT
-          ? 'Проверь, что веб-приложение Apps Script развёрнуто с доступом «Anyone» и ключ верный.'
-          : 'Проверь, что сервер запущен (node server.js).'));
+        dot.classList.remove('on');
+        liveText.textContent = 'нет связи';
+        showErr('Не смог загрузить события: ' + e.message + '.');
       });
   }
 
   function connect(){
     if (IS_APPS_SCRIPT){
-      /* Apps Script не умеет SSE — просто опрашиваем раз в 5 секунд */
-      dot.classList.add('on');
-      liveText.textContent = 'live · 5 с';
+      /* Apps Script не умеет SSE — просто опрашиваем раз в 5 секунд.
+         Индикатор «live» ставит load() только после успешного ответа. */
+      liveText.textContent = 'подключение…';
       setInterval(load, 5000);
       return;
     }
@@ -309,11 +388,23 @@
       return;
     }
     var url = IS_APPS_SCRIPT
-      ? API + '?key=' + encodeURIComponent(KEY) + '&action=reset'
+      ? API + '?key=' + encodeURIComponent(KEY) + '&action=reset&t=' + Date.now()
       : (API || '') + '/api/reset';
-    fetch(url, { method:'POST' })
-      .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function(){ events = []; seen = Object.create(null); render(); })
+
+    /* Для Apps Script — тоже JSONP: POST сюда требует preflight, который
+       Google не разрешает, а doGet с action=reset делает то же самое. */
+    var request = IS_APPS_SCRIPT
+      ? jsonp(url)
+      : fetch(url, { method:'POST' }).then(function(r){
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+
+    request
+      .then(function(data){
+        if (data && data.ok === false) throw new Error(data.error || 'приёмник отказал');
+        events = []; seen = Object.create(null); render();
+      })
       .catch(function(e){ showErr('Не смог очистить: ' + e.message); });
   });
 
