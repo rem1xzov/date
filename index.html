@@ -31,15 +31,16 @@
 
   /* Пока она не нажала «Да» — страница не скроллится вообще */
   html.locked, html.locked body{height:100%;overflow:hidden}
-  html.locked .wrap{padding-bottom:0;height:100%;max-width:100%;overflow:hidden;box-sizing:border-box;width:100%}
-  html.locked .hero{min-height:100%;height:100%;padding-left:0;padding-right:0}
+  /* .wrap уже держит боковые отступы — hero их не дублирует и не выходит за вьюпорт */
+  html.locked .wrap{padding-bottom:0;height:100%;max-width:100%;overflow:hidden;box-sizing:border-box;width:100%;padding-left:calc(20px + env(safe-area-inset-left));padding-right:calc(20px + env(safe-area-inset-right))}
+  html.locked .hero{min-height:100%;height:100%;padding-left:0;padding-right:0;box-sizing:border-box;width:100%}
   html.locked .hero > *{max-width:100%}
   html.locked .sub{max-width:min(560px,100%);margin-left:auto;margin-right:auto}
   html.locked .cta-row{max-width:min(560px,100%);margin-left:auto;margin-right:auto}
   /* на узких экранах hero не должен вылезать за вьюпорт */
   @media (max-width:600px){
     html.locked .wrap{padding-left:14px;padding-right:14px;box-sizing:border-box;width:100%}
-    html.locked .hero{padding-left:0;padding-right:0}
+    html.locked .hero{padding-left:0;padding-right:0;box-sizing:border-box;width:100%}
     html.locked .sub,html.locked .cta-row{max-width:100%;width:100%;box-sizing:border-box}
     html.locked .btn{width:100%}
   }
@@ -61,7 +62,9 @@
 
   .hero{
     min-height:100vh;min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    text-align:center;padding:60px 0 40px;
+    text-align:center;padding:60px 0 40px;box-sizing:border-box;width:100%;max-width:100%;
+    /* страховка от выезда: контент никогда не шире вьюпорта */
+    overflow-x:hidden;
   }
   .kicker{font-size:12px;letter-spacing:.42em;text-transform:uppercase;color:var(--rose-soft)}
   h1{
@@ -69,8 +72,8 @@
     background:linear-gradient(120deg,#fff 10%,var(--rose-soft) 45%,var(--gold) 90%);
     -webkit-background-clip:text;background-clip:text;color:transparent;
   }
-  .sub{max-width:560px;width:100%;margin:26px auto 0;font-size:clamp(15px,2.2vw,18px);line-height:1.65;color:var(--muted)}
-  .cta-row{margin-top:44px;display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:100%}
+  .sub{max-width:560px;width:100%;margin:26px auto 0;font-size:clamp(15px,2.2vw,18px);line-height:1.65;color:var(--muted);box-sizing:border-box}
+  .cta-row{margin-top:44px;display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:100%;box-sizing:border-box}
 
   .btn{
     border:0;cursor:pointer;font:inherit;font-weight:600;font-size:16px;
