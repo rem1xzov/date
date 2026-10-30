@@ -274,11 +274,38 @@
     return base + '?api=<URL_APPS_SCRIPT>&key=<КЛЮЧ>';
   }
 
-  /* Apps Script отдаёт Access-Control-Allow-Origin: * только на GET, а на
-     preflight (OPTIONS) — HTML без CORS-заголовков. Поэтому fetch с заголовками
-     или cache:'no-store' браузер блокирует. Обходим через JSONP: <script src>
-     не подчиняется CORS, а Apps Script умеет вернуть callback(...). */
+  /* Apps Script отдаёт Access-Control-Allow-Origin: * на простой GET,
+     поэтому fetch без кастомных заголовков читается напрямую.
+     JSONP оставлен фолбэком: если деплой старый и CORS не отдаёт —
+     пробуем <script src> с callback (работает, только если в Code.gs
+     есть поддержка callback). */
   var jsonpSeq = 0;
+
+  function fetchJson(url, timeoutMs){
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = setTimeout(function(){ if (ctrl) ctrl.abort(); }, timeoutMs || 15000);
+    return fetch(url, ctrl ? { signal: ctrl.signal } : {})
+      .then(function(r){
+        clearTimeout(timer);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function(text){
+        try { return JSON.parse(text); }
+        catch (e){ throw new Error('ответ не JSON'); }
+      })
+      .catch(function(e){
+        clearTimeout(timer);
+        throw e;
+      });
+  }
+
+  /* Сначала пробуем fetch (CORS разрешён), при любой ошибке — JSONP. */
+  function apiGet(url, timeoutMs){
+    return fetchJson(url, timeoutMs).catch(function(){
+      return jsonp(url, timeoutMs);
+    });
+  }
 
   function jsonp(url, timeoutMs){
     return new Promise(function(resolve, reject){
@@ -327,7 +354,7 @@
       : (API || '') + '/api/events?limit=500';
 
     var request = IS_APPS_SCRIPT
-      ? jsonp(url)
+      ? apiGet(url)
       : fetch(url, { cache:'no-store' }).then(function(r){
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.text();
@@ -391,10 +418,10 @@
       ? API + '?key=' + encodeURIComponent(KEY) + '&action=reset&t=' + Date.now()
       : (API || '') + '/api/reset';
 
-    /* Для Apps Script — тоже JSONP: POST сюда требует preflight, который
-       Google не разрешает, а doGet с action=reset делает то же самое. */
+    /* Для Apps Script — GET с action=reset (POST требует preflight,
+       который Google не разрешает). fetch с фолбэком на JSONP. */
     var request = IS_APPS_SCRIPT
-      ? jsonp(url)
+      ? apiGet(url)
       : fetch(url, { method:'POST' }).then(function(r){
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.json();
