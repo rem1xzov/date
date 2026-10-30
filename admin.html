@@ -144,6 +144,12 @@
     return (v && /^https?:\/\//i.test(v)) ? v : '';
   })();
 
+  /* Свой сервер (node server.js) — это не Apps Script: у него другие адреса
+     (/api/events, /api/stream, /api/reset) и он умеет SSE. */
+  var IS_APPS_SCRIPT = /script\.google\.com|googleusercontent\.com/i.test(API);
+  var IS_LOCAL = location.protocol === 'file:' ||
+                 /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(location.origin);
+
   var KEY = (function(){
     var q = new URLSearchParams(location.search).get('key');
     if (q) return q;
@@ -247,13 +253,13 @@
 
   function load(){
     showErr('');
-    if (!API && location.protocol !== 'file:' && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(location.origin)){
+    if (!API && !IS_LOCAL){
       showErr('Админка открыта со статического хостинга, а сервера рядом нет. Укажи приёмник: admin.html?api=<URL Apps Script>&key=<ключ>.');
       return;
     }
-    var url = API
+    var url = IS_APPS_SCRIPT
       ? API + '?key=' + encodeURIComponent(KEY) + '&action=list&t=' + Date.now()
-      : '/api/events?limit=500';
+      : (API || '') + '/api/events?limit=500';
     fetch(url, { cache:'no-store' })
       .then(function(r){
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -267,26 +273,26 @@
         render();
       })
       .catch(function(e){
-        showErr('Не смог загрузить события: ' + e.message + '. ' + (API
+        showErr('Не смог загрузить события: ' + e.message + '. ' + (IS_APPS_SCRIPT
           ? 'Проверь, что веб-приложение Apps Script развёрнуто с доступом «Anyone» и ключ верный.'
           : 'Проверь, что сервер запущен (node server.js).'));
       });
   }
 
   function connect(){
-    if (API){
+    if (IS_APPS_SCRIPT){
       /* Apps Script не умеет SSE — просто опрашиваем раз в 5 секунд */
       dot.classList.add('on');
       liveText.textContent = 'live · 5 с';
       setInterval(load, 5000);
       return;
     }
-    if (location.protocol !== 'file:' && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(location.origin)){
+    if (!IS_LOCAL){
       liveText.textContent = 'нет приёмника';
       return;
     }
     if (!window.EventSource){ liveText.textContent = 'без live-режима'; return; }
-    var es = new EventSource('/api/stream');
+    var es = new EventSource((API || '') + '/api/stream');
     es.onopen = function(){ dot.classList.add('on'); liveText.textContent = 'live'; };
     es.onerror = function(){ dot.classList.remove('on'); liveText.textContent = 'переподключение…'; };
     es.onmessage = function(e){
@@ -298,13 +304,13 @@
 
   document.getElementById('resetBtn').addEventListener('click', function(){
     if (!window.confirm('Очистить ленту событий?')) return;
-    if (!API && location.protocol !== 'file:' && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(location.origin)){
+    if (!IS_APPS_SCRIPT && !IS_LOCAL){
       showErr('Очистка недоступна: не указан приёмник (admin.html?api=…&key=…).');
       return;
     }
-    var url = API
+    var url = IS_APPS_SCRIPT
       ? API + '?key=' + encodeURIComponent(KEY) + '&action=reset'
-      : '/api/reset';
+      : (API || '') + '/api/reset';
     fetch(url, { method:'POST' })
       .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function(){ events = []; seen = Object.create(null); render(); })

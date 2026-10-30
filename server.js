@@ -23,6 +23,13 @@ const MAX_BODY = 8 * 1024;          // 8 КБ на событие — больш
 const MAX_EVENTS = 5000;            // сколько событий держим в памяти
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''; // необязательный пароль админки
 
+/* PostgreSQL — основной источник правды, если задан DATABASE_URL.
+   Без него сервер работает как раньше: файл data/events.jsonl. */
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const PG_SSL = process.env.PGSSL === '1' || process.env.PGSSL === 'true';
+let pool = null;
+let dbReady = false;
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -35,6 +42,8 @@ const MIME = {
 };
 
 /* ---------------- хранилище ---------------- */
+
+const { Pool } = require('pg');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -59,6 +68,113 @@ function loadEvents() {
   }
   if (events.length > MAX_EVENTS) events = events.slice(-MAX_EVENTS);
   console.log('[events] загружено из файла:', events.length);
+}
+
+/* ---------------- PostgreSQL ---------------- */
+
+const SQL_SCHEMA = `
+CREATE TABLE IF NOT EXISTS events (
+  id          BIGSERIAL PRIMARY KEY,
+  session     TEXT        NOT NULL,
+  type        TEXT        NOT NULL,
+  place       TEXT,
+  when_at     TEXT,
+  ua          TEXT,
+  ip          TEXT,
+  data        JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS events_created_at_idx ON events (created_at DESC);
+CREATE INDEX IF NOT EXISTS events_session_idx    ON events (session);
+`;
+
+async function initDb() {
+  if (!DATABASE_URL) {
+    console.log('[db] DATABASE_URL не задан — храню события в data/events.jsonl');
+    return;
+  }
+  pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: PG_SSL ? { rejectUnauthorized: false } : undefined,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 8000
+  });
+  pool.on('error', (e) => console.error('[db] ошибка пула:', e.message));
+  try {
+    await pool.query(SQL_SCHEMA);
+    dbReady = true;
+    const { rows } = await pool.query('SELECT count(*)::int AS n FROM events');
+    console.log('[db] PostgreSQL подключён, событий в базе:', rows[0].n);
+  } catch (e) {
+    dbReady = false;
+    console.error('[db] не смог подготовить базу:', e.message);
+    console.error('[db] работаю на файле data/events.jsonl');
+  }
+}
+
+/** Сохраняет событие в PostgreSQL. Возвращает true при успехе. */
+async function dbInsert(ev) {
+  if (!dbReady || !pool) return false;
+  const extra = Object.assign({}, ev);
+  delete extra.id; delete extra.session; delete extra.type;
+  delete extra.place; delete extra.when; delete extra.ua; delete extra.ip;
+  delete extra.ts;
+  try {
+    await pool.query(
+      `INSERT INTO events (session, type, place, when_at, ua, ip, data)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+      [
+        String(ev.session || 'unknown').slice(0, 64),
+        String(ev.type || 'unknown').slice(0, 64),
+        ev.place ? String(ev.place).slice(0, 200) : null,
+        ev.when ? String(ev.when).slice(0, 120) : null,
+        ev.ua ? String(ev.ua).slice(0, 400) : null,
+        ev.ip ? String(ev.ip).slice(0, 64) : null,
+        JSON.stringify(extra)
+      ]
+    );
+    return true;
+  } catch (e) {
+    console.error('[db] не смог записать событие:', e.message);
+    return false;
+  }
+}
+
+/** Читает последние события из PostgreSQL в формате, который ждёт админка. */
+async function dbList(limit) {
+  if (!dbReady || !pool) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, session, type, place, when_at, ua, ip, data, created_at
+         FROM events ORDER BY id DESC LIMIT $1`,
+      [limit]
+    );
+    return rows.map((r) => Object.assign({}, r.data || {}, {
+      id: String(r.id),
+      session: r.session,
+      type: r.type,
+      place: r.place || undefined,
+      when: r.when_at || undefined,
+      ua: r.ua || undefined,
+      ip: r.ip || undefined,
+      ts: new Date(r.created_at).toISOString()
+    })).reverse();
+  } catch (e) {
+    console.error('[db] не смог прочитать события:', e.message);
+    return null;
+  }
+}
+
+async function dbClear() {
+  if (!dbReady || !pool) return false;
+  try {
+    await pool.query('TRUNCATE TABLE events RESTART IDENTITY');
+    return true;
+  } catch (e) {
+    console.error('[db] не смог очистить таблицу:', e.message);
+    return false;
+  }
 }
 
 function appendEvent(ev) {
@@ -177,16 +293,21 @@ const server = http.createServer(async (req, res) => {
     const built = buildEvent(body, req);
     if (built.error) return sendJson(res, 400, { ok: false, error: built.error });
 
-    appendEvent(built.ev);
+    /* Пишем в PostgreSQL, если он подключён; иначе — в файл. */
+    const savedToDb = await dbInsert(built.ev);
+    if (!savedToDb) appendEvent(built.ev);
     broadcast(built.ev);
-    console.log('[event]', built.ev.type, built.ev.place || built.ev.when || '');
+    console.log('[event]', built.ev.type, built.ev.place || built.ev.when || '',
+      savedToDb ? '(postgres)' : '(file)');
     return sendJson(res, 200, { ok: true, id: built.ev.id });
   }
 
   if (p === '/api/events' && req.method === 'GET') {
     if (!adminAllowed(req, url)) return sendJson(res, 401, { ok: false, error: 'нужен токен' });
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 200, 1), MAX_EVENTS);
-    return sendJson(res, 200, { ok: true, total: events.length, events: events.slice(-limit) });
+    const fromDb = await dbList(limit);
+    if (fromDb) return sendJson(res, 200, { ok: true, source: 'postgres', total: fromDb.length, events: fromDb });
+    return sendJson(res, 200, { ok: true, source: 'file', total: events.length, events: events.slice(-limit) });
   }
 
   if (p === '/api/stream' && req.method === 'GET') {
@@ -209,6 +330,7 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/reset' && req.method === 'POST') {
     if (!adminAllowed(req, url)) return sendJson(res, 401, { ok: false, error: 'нужен токен' });
     events = [];
+    await dbClear();
     fs.writeFile(EVENTS_FILE, '', (err) => {
       if (err) console.error('[events] не смог очистить:', err.message);
     });
@@ -234,11 +356,13 @@ const server = http.createServer(async (req, res) => {
 
 loadEvents();
 
-server.listen(PORT, HOST, () => {
-  console.log('Приглашение:  http://localhost:' + PORT + '/');
-  console.log('Админка:      http://localhost:' + PORT + '/admin');
-  console.log('События:      ' + EVENTS_FILE);
-  if (ADMIN_TOKEN) console.log('Админка защищена токеном (ADMIN_TOKEN).');
+initDb().finally(() => {
+  server.listen(PORT, HOST, () => {
+    console.log('Приглашение:  http://localhost:' + PORT + '/');
+    console.log('Админка:      http://localhost:' + PORT + '/admin');
+    console.log('Хранилище:    ' + (dbReady ? 'PostgreSQL' : EVENTS_FILE));
+    if (ADMIN_TOKEN) console.log('Админка защищена токеном (ADMIN_TOKEN).');
+  });
 });
 
 process.on('SIGINT', () => {
