@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Админка — что она выбрала</title>
+<style>
+  :root{
+    --bg:#0b0a12; --bg2:#141021;
+    --rose:#ff6b9d; --rose-soft:#ffa8c5; --gold:#f5c26b;
+    --text:#f4eef7; --muted:#a99cb8;
+    --card:rgba(255,255,255,.045); --brd:rgba(255,255,255,.10);
+    --ok:#5ddc9a; --bad:#ff7b8a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    background:radial-gradient(1000px 700px at 15% -10%, #2a1533 0%, transparent 60%),
+               radial-gradient(900px 600px at 90% 5%, #1b2340 0%, transparent 55%),
+               linear-gradient(180deg,var(--bg) 0%, var(--bg2) 100%);
+    background-attachment:fixed;color:var(--text);min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 18px calc(60px + env(safe-area-inset-bottom))}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:22px}
+  h1{font-size:clamp(20px,3.4vw,28px);letter-spacing:-.02em;font-weight:700}
+  .live{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 0 rgba(255,123,138,.6)}
+  .dot.on{background:var(--ok);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(93,220,154,.55)}70%{box-shadow:0 0 0 10px rgba(93,220,154,0)}100%{box-shadow:0 0 0 0 rgba(93,220,154,0)}}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px}
+  .stat{background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:16px 18px}
+  .stat .k{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#8d81a0;margin-bottom:8px}
+  .stat .v{font-size:22px;font-weight:700;letter-spacing:-.01em;overflow-wrap:anywhere}
+  .stat .v.small{font-size:15px;font-weight:600;line-height:1.4}
+
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+  .btn{
+    border:1px solid var(--brd);background:rgba(255,255,255,.05);color:var(--text);
+    font:inherit;font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;cursor:pointer;
+    transition:background .2s,transform .2s,border-color .2s;
+  }
+  .btn:hover{background:rgba(255,255,255,.1);transform:translateY(-1px)}
+  .btn.danger{border-color:rgba(255,123,138,.4);color:#ffb3bc}
+  .btn.danger:hover{background:rgba(255,123,138,.12)}
+
+  .feed{display:flex;flex-direction:column;gap:10px}
+  .ev{
+    display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:start;
+    background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:14px 16px;
+    animation:in .35s cubic-bezier(.2,.8,.3,1);
+  }
+  @keyframes in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+  .ev .ico{font-size:22px;line-height:1.2;text-align:center}
+  .ev .title{font-size:15px;font-weight:650;margin-bottom:4px;overflow-wrap:anywhere}
+  .ev .sub{font-size:13px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+  .ev .time{font-size:12px;color:#8d81a0;white-space:nowrap;text-align:right;line-height:1.5}
+  .ev .time b{display:block;color:var(--rose-soft);font-weight:600;font-size:13px}
+  .ev.yes{border-color:rgba(93,220,154,.35);background:rgba(93,220,154,.07)}
+  .ev.no{border-color:rgba(255,123,138,.35);background:rgba(255,123,138,.07)}
+  .ev.place{border-color:rgba(245,194,107,.32);background:rgba(245,194,107,.06)}
+  .ev.final{border-color:rgba(255,107,157,.45);background:rgba(255,107,157,.10)}
+
+  .empty{text-align:center;color:#6f6480;font-size:14px;padding:50px 20px;line-height:1.7}
+  .err{color:#ffb3bc;font-size:13px;margin-bottom:14px;line-height:1.6}
+
+  @media (max-width:600px){
+    .wrap{padding:20px 12px calc(48px + env(safe-area-inset-bottom))}
+    .ev{grid-template-columns:34px 1fr;gap:10px;padding:12px 13px;border-radius:14px}
+    .ev .ico{font-size:19px}
+    .ev .time{grid-column:2;text-align:left;display:flex;gap:8px;align-items:baseline;margin-top:2px}
+    .ev .time b{display:inline;font-size:12px}
+    .stat{padding:13px 14px}
+    .stat .v{font-size:19px}
+    .btn{font-size:13.5px;padding:9px 15px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Что она выбрала</h1>
+    <div class="live"><span class="dot" id="dot"></span><span id="liveText">подключаюсь…</span></div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Первый ответ</div><div class="v small" id="sAnswer">—</div></div>
+    <div class="stat"><div class="k">Место</div><div class="v small" id="sPlace">—</div></div>
+    <div class="stat"><div class="k">Когда</div><div class="v small" id="sWhen">—</div></div>
+    <div class="stat"><div class="k">Согласие</div><div class="v small" id="sFinal">—</div></div>
+    <div class="stat"><div class="k">Событий</div><div class="v" id="sCount">0</div></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="refreshBtn">Обновить</button>
+    <button class="btn danger" id="resetBtn">Очистить ленту</button>
+  </div>
+
+  <div class="err" id="err" hidden></div>
+  <div class="feed" id="feed"></div>
+  <div class="empty" id="empty">Пока тихо. Открой приглашение на её устройстве — события появятся здесь сами.</div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var feed = document.getElementById('feed');
+  var empty = document.getElementById('empty');
+  var errBox = document.getElementById('err');
+  var dot = document.getElementById('dot');
+  var liveText = document.getElementById('liveText');
+
+  var LABELS = {
+    visit:        { ico:'👀', title:'Открыла страницу', cls:'' },
+    yes:          { ico:'💚', title:'Нажала «Да, давай»', cls:'yes' },
+    no:           { ico:'🤍', title:'Нажала «Мне нужно подумать»', cls:'no' },
+    place:        { ico:'📍', title:'Выбрала место', cls:'place' },
+    custom_place: { ico:'✍️', title:'Предложила свой вариант', cls:'place' },
+    when:         { ico:'🗓', title:'Выбрала дату и время', cls:'place' },
+    final:        { ico:'🎉', title:'Нажала «Я согласна»', cls:'final' },
+    modal_close:  { ico:'✕',  title:'Закрыла окно', cls:'' },
+    reset:        { ico:'🧹', title:'Лента очищена', cls:'' }
+  };
+
+  var events = [];
+  var seen = Object.create(null);
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(m){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+    });
+  }
+
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+
+  function fmtTime(ts){
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return '—';
+    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  function fmtDate(ts){
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    var today = new Date();
+    var same = d.toDateString() === today.toDateString();
+    if (same) return 'сегодня';
+    return pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
+  }
+
+  function showErr(msg){
+    if (!msg){ errBox.hidden = true; errBox.textContent = ''; return; }
+    errBox.hidden = false;
+    errBox.textContent = msg;
+  }
+
+  function render(){
+    feed.innerHTML = '';
+    var list = events.slice().reverse();
+    for (var i = 0; i < list.length; i++){
+      var ev = list[i];
+      var meta = LABELS[ev.type] || { ico:'•', title: ev.type, cls:'' };
+      var el = document.createElement('div');
+      el.className = 'ev ' + meta.cls;
+
+      var sub = [];
+      if (ev.place) sub.push(esc(ev.place));
+      if (ev.when) sub.push(esc(ev.when));
+      if (ev.note) sub.push(esc(ev.note));
+
+      el.innerHTML =
+        '<div class="ico">' + meta.ico + '</div>' +
+        '<div>' +
+          '<div class="title">' + esc(meta.title) + '</div>' +
+          (sub.length ? '<div class="sub">' + sub.join(' · ') + '</div>' : '') +
+        '</div>' +
+        '<div class="time"><b>' + fmtTime(ev.ts) + '</b>' + fmtDate(ev.ts) + '</div>';
+      feed.appendChild(el);
+    }
+    empty.hidden = list.length > 0;
+    updateStats();
+  }
+
+  function lastOf(type){
+    for (var i = events.length - 1; i >= 0; i--){
+      if (events[i].type === type) return events[i];
+    }
+    return null;
+  }
+
+  function updateStats(){
+    document.getElementById('sCount').textContent = String(events.length);
+
+    var yes = lastOf('yes'), no = lastOf('no');
+    var answer = '—';
+    if (yes && (!no || yes.ts > no.ts)) answer = 'Да · ' + fmtTime(yes.ts);
+    else if (no) answer = 'Подумает · ' + fmtTime(no.ts);
+    document.getElementById('sAnswer').textContent = answer;
+
+    var place = lastOf('place') || lastOf('custom_place');
+    document.getElementById('sPlace').textContent = place && place.place ? place.place : '—';
+
+    var when = lastOf('when');
+    document.getElementById('sWhen').textContent = when && when.when ? when.when : '—';
+
+    var fin = lastOf('final');
+    document.getElementById('sFinal').textContent = fin ? 'Да · ' + fmtTime(fin.ts) : '—';
+  }
+
+  function addEvent(ev){
+    if (!ev || !ev.id) return;
+    if (seen[ev.id]) return;
+    seen[ev.id] = true;
+    if (ev.type === 'reset'){ events = []; seen = Object.create(null); seen[ev.id] = true; }
+    events.push(ev);
+    render();
+  }
+
+  function load(){
+    showErr('');
+    fetch('/api/events?limit=500', { cache:'no-store' })
+      .then(function(r){
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data){
+        if (!data || !Array.isArray(data.events)) throw new Error('неожиданный ответ сервера');
+        events = [];
+        seen = Object.create(null);
+        for (var i = 0; i < data.events.length; i++) addEvent(data.events[i]);
+        render();
+      })
+      .catch(function(e){
+        showErr('Не смог загрузить события: ' + e.message + '. Проверь, что сервер запущен (node server.js).');
+      });
+  }
+
+  function connect(){
+    if (!window.EventSource){ liveText.textContent = 'без live-режима'; return; }
+    var es = new EventSource('/api/stream');
+    es.onopen = function(){ dot.classList.add('on'); liveText.textContent = 'live'; };
+    es.onerror = function(){ dot.classList.remove('on'); liveText.textContent = 'переподключение…'; };
+    es.onmessage = function(e){
+      try { addEvent(JSON.parse(e.data)); } catch (err) { /* мусор игнорируем */ }
+    };
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', load);
+
+  document.getElementById('resetBtn').addEventListener('click', function(){
+    if (!window.confirm('Очистить ленту событий? Файл data/events.jsonl тоже обнулится.')) return;
+    fetch('/api/reset', { method:'POST' })
+      .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(){ events = []; seen = Object.create(null); render(); })
+      .catch(function(e){ showErr('Не смог очистить: ' + e.message); });
+  });
+
+  load();
+  connect();
+})();
+</script>
+</body>
+</html>

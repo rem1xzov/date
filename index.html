@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Один вопрос…</title>
+<style>
+  :root{
+    --bg:#0b0a12; --bg2:#141021;
+    --rose:#ff6b9d; --rose-soft:#ffa8c5; --gold:#f5c26b;
+    --text:#f4eef7; --muted:#a99cb8;
+    --card:rgba(255,255,255,.045); --card-brd:rgba(255,255,255,.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{overflow-x:hidden;-webkit-text-size-adjust:100%}
+  body{
+    font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    background:radial-gradient(1200px 800px at 20% -10%, #2a1533 0%, transparent 60%),
+               radial-gradient(1000px 700px at 85% 10%, #1b2340 0%, transparent 55%),
+               linear-gradient(180deg,var(--bg) 0%, var(--bg2) 100%);
+    background-attachment:fixed;
+    color:var(--text);
+    min-height:100vh;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* Пока она не нажала «Да» — страница не скроллится вообще */
+  html.locked, html.locked body{height:100%;overflow:hidden}
+  html.locked .wrap{padding-bottom:0;height:100%;max-width:100%;overflow:hidden;box-sizing:border-box;width:100%}
+  html.locked .hero{min-height:100%;height:100%;padding-left:0;padding-right:0}
+  html.locked .hero > *{max-width:100%}
+  html.locked .sub{max-width:min(560px,100%);margin-left:auto;margin-right:auto}
+  html.locked .cta-row{max-width:min(560px,100%);margin-left:auto;margin-right:auto}
+  /* на узких экранах hero не должен вылезать за вьюпорт */
+  @media (max-width:600px){
+    html.locked .wrap{padding-left:14px;padding-right:14px;box-sizing:border-box;width:100%}
+    html.locked .hero{padding-left:0;padding-right:0}
+    html.locked .sub,html.locked .cta-row{max-width:100%;width:100%;box-sizing:border-box}
+    html.locked .btn{width:100%}
+  }
+  html.locked #places, html.locked .final-section, html.locked footer{display:none}
+
+  #stars{position:fixed;inset:0;pointer-events:none;z-index:0}
+  .glow{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0;opacity:.45;max-width:100vw;max-height:100vh}
+  .glow.a{width:420px;height:420px;background:#ff4d8d;top:-120px;left:-100px}
+  .glow.b{width:380px;height:380px;background:#5b6bff;bottom:-140px;right:-90px}
+  .glow.c{width:300px;height:300px;background:#f5c26b;top:45%;left:60%;opacity:.18}
+
+  .wrap{
+    position:relative;z-index:2;max-width:1080px;margin:0 auto;
+    padding:0 20px calc(80px + env(safe-area-inset-bottom));
+    padding-left:calc(20px + env(safe-area-inset-left));
+    padding-right:calc(20px + env(safe-area-inset-right));
+    box-sizing:border-box;width:100%;
+  }
+
+  .hero{
+    min-height:100vh;min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:60px 0 40px;
+  }
+  .kicker{font-size:12px;letter-spacing:.42em;text-transform:uppercase;color:var(--rose-soft)}
+  h1{
+    font-size:clamp(38px,7.5vw,78px);line-height:1.04;font-weight:700;letter-spacing:-.02em;margin:22px 0 0;
+    background:linear-gradient(120deg,#fff 10%,var(--rose-soft) 45%,var(--gold) 90%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .sub{max-width:560px;width:100%;margin:26px auto 0;font-size:clamp(15px,2.2vw,18px);line-height:1.65;color:var(--muted)}
+  .cta-row{margin-top:44px;display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:100%}
+
+  .btn{
+    border:0;cursor:pointer;font:inherit;font-weight:600;font-size:16px;
+    padding:16px 34px;border-radius:999px;
+    transition:transform .25s cubic-bezier(.2,.8,.3,1),box-shadow .25s,background .25s;
+  }
+  .btn-primary{background:linear-gradient(120deg,var(--rose),#ff8f6b);color:#1a0a12;box-shadow:0 12px 34px -10px rgba(255,107,157,.75)}
+  .btn-primary:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 20px 44px -12px rgba(255,107,157,.9)}
+  .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--card-brd)}
+  .btn-ghost:hover{background:rgba(255,255,255,.06);transform:translateY(-2px)}
+
+  .scroll-hint{margin-top:64px;font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:#6f6480}
+  .scroll-hint span{display:block;margin-top:10px;font-size:18px}
+
+  section{padding:70px 0}
+  .sec-title{font-size:clamp(24px,4vw,36px);font-weight:700;letter-spacing:-.01em;margin-bottom:10px}
+  .sec-sub{color:var(--muted);font-size:15px;line-height:1.6;max-width:620px;margin-bottom:34px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(290px,100%),1fr));gap:18px}
+  .place{
+    position:relative;background:var(--card);border:1px solid var(--card-brd);border-radius:20px;
+    padding:24px 22px 22px;cursor:pointer;
+    transition:transform .35s cubic-bezier(.2,.8,.3,1),border-color .35s,background .35s,box-shadow .35s;
+  }
+  .place:hover{transform:translateY(-6px);border-color:rgba(255,107,157,.45);box-shadow:0 24px 50px -24px rgba(0,0,0,.9)}
+  .place.selected{border-color:var(--rose);background:rgba(255,107,157,.10);box-shadow:0 0 0 1px var(--rose) inset}
+  .place .tag{
+    display:inline-block;font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--gold);border:1px solid rgba(245,194,107,.35);border-radius:999px;padding:4px 11px;margin-bottom:14px;
+  }
+  .place h3{font-size:19px;font-weight:650;margin-bottom:8px;letter-spacing:-.01em}
+  .place p{font-size:14px;line-height:1.6;color:var(--muted)}
+  .place .meta{
+    display:flex;gap:14px;flex-wrap:wrap;margin-top:16px;padding-top:14px;
+    border-top:1px solid rgba(255,255,255,.07);font-size:12.5px;color:#8d81a0;
+  }
+  .place .meta b{color:var(--rose-soft);font-weight:600}
+  .place .meta .total{color:var(--gold)}
+  .place .why{
+    margin-top:14px;font-size:13px;line-height:1.55;color:#b9aecb;
+    border-left:2px solid rgba(255,107,157,.45);padding-left:12px;
+  }
+  .place .why b{color:var(--rose-soft);font-weight:600}
+  .place.custom{border-style:dashed;border-color:rgba(245,194,107,.35)}
+  .place.custom.selected{border-style:solid;border-color:var(--gold);background:rgba(245,194,107,.09);box-shadow:0 0 0 1px var(--gold) inset}
+  .place.custom .tag{color:var(--rose-soft);border-color:rgba(255,168,197,.35)}
+  .place.custom .check{border-color:rgba(245,194,107,.4)}
+  .place.custom.selected .check{background:var(--gold);border-color:var(--gold);color:#1a0a12}
+  .place.custom input{
+    width:100%;margin-top:14px;padding:12px 14px;border-radius:12px;font:inherit;font-size:14px;
+    background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.14);color:var(--text);
+    outline:none;transition:border-color .25s,background .25s;
+  }
+  .place.custom input::placeholder{color:#7d7290}
+  .place.custom input:focus{border-color:rgba(245,194,107,.6);background:rgba(0,0,0,.4)}
+  .place.custom .hint{margin-top:8px;font-size:11.5px;color:#7d7290;line-height:1.5}
+  .when{
+    margin-top:34px;padding:26px 24px;border-radius:20px;
+    background:rgba(255,255,255,.035);border:1px solid var(--card-brd);
+  }
+  .when h3{font-size:17px;font-weight:650;margin-bottom:6px;letter-spacing:-.01em}
+  .when p{font-size:13.5px;color:var(--muted);line-height:1.55;margin-bottom:18px}
+  .when-row{display:flex;gap:14px;flex-wrap:wrap}
+  .field{flex:1 1 200px;min-width:0}
+  .field label{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8d81a0;margin-bottom:8px}
+  .field input{
+    width:100%;padding:13px 15px;border-radius:12px;font:inherit;font-size:15px;
+    background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.14);color:var(--text);
+    outline:none;transition:border-color .25s,background .25s;
+  }
+  .field input:focus{border-color:rgba(255,107,157,.6);background:rgba(0,0,0,.4)}
+  .field input::-webkit-calendar-picker-indicator{filter:invert(.75);cursor:pointer}
+  .when-note{margin-top:14px;font-size:12px;color:#6f6480;line-height:1.55}
+  .when-note.err{color:#ff8f9e}
+  .check{
+    position:absolute;top:18px;right:18px;width:26px;height:26px;border-radius:50%;
+    border:1.5px solid rgba(255,255,255,.22);display:grid;place-items:center;
+    transition:all .3s;font-size:13px;color:transparent;
+  }
+  .place.selected .check{background:var(--rose);border-color:var(--rose);color:#1a0a12}
+
+  .final{
+    text-align:center;padding:80px 24px;border-radius:28px;margin-top:20px;
+    background:linear-gradient(160deg,rgba(255,107,157,.13),rgba(91,107,255,.10));
+    border:1px solid rgba(255,255,255,.10);
+  }
+  .final h2{font-size:clamp(26px,4.5vw,40px);margin-bottom:14px;letter-spacing:-.02em}
+  .final p{color:var(--muted);max-width:520px;margin:0 auto 30px;line-height:1.65}
+
+  .modal{
+    position:fixed;inset:0;z-index:50;display:none;place-items:center;padding:20px;
+    background:rgba(6,4,12,.82);backdrop-filter:blur(10px);
+    overflow-y:auto;-webkit-overflow-scrolling:touch;
+  }
+  .modal.open{display:grid}
+  .modal-card{
+    background:linear-gradient(160deg,#1b1428,#120e1c);border:1px solid rgba(255,255,255,.12);
+    border-radius:24px;padding:40px 32px;max-width:440px;width:100%;text-align:center;
+  }
+  .modal-card .emoji{font-size:52px;margin-bottom:16px;display:block}
+  .modal-card h3{font-size:24px;margin-bottom:12px}
+  .modal-card p{color:var(--muted);line-height:1.6;font-size:15px;margin-bottom:26px}
+
+  /* ---------- мини-плашка (toast) ---------- */
+  .toast{
+    position:fixed;z-index:70;left:50%;top:50%;
+    transform:translate(-50%,-50%) translateY(8px) scale(.94);
+    width:max-content;max-width:min(420px,calc(100vw - 32px));
+    display:flex;align-items:center;gap:10px;
+    padding:13px 18px;border-radius:16px;
+    background:rgba(24,17,36,.96);border:1px solid rgba(255,255,255,.14);
+    box-shadow:0 24px 60px -20px rgba(0,0,0,.95);
+    color:var(--text);font-size:14px;line-height:1.45;text-align:left;
+    opacity:0;pointer-events:none;
+    transition:opacity .22s ease,transform .22s cubic-bezier(.2,.8,.3,1);
+  }
+  .toast.show{opacity:1;transform:translate(-50%,-50%) translateY(0) scale(1)}
+  .toast .t-ico{font-size:18px;line-height:1;flex:0 0 auto}
+  .toast .t-txt{overflow-wrap:anywhere}
+  .toast.ok{border-color:rgba(93,220,154,.45)}
+  .toast.warn{border-color:rgba(255,123,138,.45)}
+
+  .confetti{position:fixed;top:-12px;width:9px;height:14px;z-index:60;pointer-events:none;border-radius:2px}
+
+  footer{text-align:center;color:#5d5470;font-size:12.5px;padding:40px 0 0;line-height:1.7}
+
+  /* ---------- мобильная адаптация ---------- */
+  @media (max-width:600px){
+    .wrap{
+      padding:0 14px calc(56px + env(safe-area-inset-bottom));
+      padding-left:calc(14px + env(safe-area-inset-left));
+      padding-right:calc(14px + env(safe-area-inset-right));
+      box-sizing:border-box;width:100%;
+    }
+    html.locked .wrap{padding-left:14px;padding-right:14px;box-sizing:border-box;width:100%}
+    .hero{padding:36px 0 16px;min-height:100svh}
+    html.locked .hero{padding:36px 0 16px}
+    .kicker{font-size:10.5px;letter-spacing:.3em}
+    h1{font-size:clamp(28px,8.6vw,40px);margin-top:16px;overflow-wrap:break-word;hyphens:auto}
+    .sub{margin-top:18px;font-size:14.5px;line-height:1.6;max-width:100%;width:100%;box-sizing:border-box}
+    html.locked .sub{max-width:100%;width:100%;box-sizing:border-box}
+    .cta-row{flex-direction:column;width:100%;max-width:100%;margin-top:30px;gap:10px;box-sizing:border-box}
+    html.locked .cta-row{max-width:100%;width:100%;box-sizing:border-box}
+    .btn{width:100%;max-width:100%;padding:15px 22px;font-size:15.5px}
+    .scroll-hint{margin-top:34px;font-size:10.5px;letter-spacing:.24em}
+    section{padding:44px 0}
+    .sec-title{font-size:22px}
+    .sec-sub{font-size:13.5px;margin-bottom:22px}
+    .grid{grid-template-columns:1fr;gap:12px}
+    .place{padding:18px 16px 16px;border-radius:16px}
+    .place h3{font-size:17px;padding-right:34px}
+    .place p{font-size:13.5px}
+    .place .meta{gap:10px;font-size:12px;margin-top:12px;padding-top:12px}
+    .place .why{font-size:12.5px;margin-top:12px;padding-left:10px}
+    .place .check{top:14px;right:14px;width:24px;height:24px}
+    .place.custom input{font-size:16px} /* 16px — чтобы iOS не зумил при фокусе */
+    .when{margin-top:22px;padding:18px 16px;border-radius:16px}
+    .when h3{font-size:16px}
+    .when p{font-size:13px;margin-bottom:14px}
+    .when-row{flex-direction:column;gap:12px}
+    .field{flex:1 1 auto}
+    .field input{font-size:16px;padding:12px 14px}
+    .final{padding:44px 18px;border-radius:20px}
+    .final h2{font-size:24px}
+    .final p{font-size:14px;margin-bottom:22px}
+    .modal{padding:14px;align-items:start;padding-top:calc(14px + env(safe-area-inset-top))}
+    .modal-card{padding:28px 20px;border-radius:20px}
+    .modal-card .emoji{font-size:42px;margin-bottom:12px}
+    .modal-card h3{font-size:20px}
+    .modal-card p{font-size:14px;margin-bottom:20px}
+    /* плашка строго по центру экрана, а не уезжает вверх */
+    .toast{
+      position:fixed;
+      top:50%;bottom:auto;left:50%;right:auto;
+      margin:0;
+      transform:translate(-50%,-50%) translateY(8px) scale(.94);
+      width:calc(100vw - 32px);max-width:calc(100vw - 32px);
+      box-sizing:border-box;
+      padding:14px 16px;font-size:14px;border-radius:14px;
+      align-items:flex-start;
+    }
+    .toast.show{transform:translate(-50%,-50%) translateY(0) scale(1)}
+    footer{font-size:11.5px;padding-top:28px}
+    .glow.a{width:280px;height:280px}
+    .glow.b{width:260px;height:260px}
+    .glow.c{display:none}
+  }
+  @media (max-width:380px){
+    h1{font-size:30px}
+    .place .meta{flex-direction:column;gap:4px}
+    .place{padding:16px 14px 14px}
+    .place h3{font-size:16px}
+    .place p{font-size:13px}
+    .place .why{font-size:12px}
+    .sec-title{font-size:20px}
+    .btn{font-size:15px;padding:14px 18px}
+  }
+  @media (hover:none){
+    .place:hover{transform:none;box-shadow:none;border-color:var(--card-brd)}
+    .btn-primary:hover,.btn-ghost:hover{transform:none}
+  }
+  /* страховка от горизонтального выезда на телефонах */
+  .wrap,.hero,.sub,.cta-row,.grid,.place,.when,.final{max-width:100%}
+  .sub,.place p,.place h3,.place .why,.sec-sub{overflow-wrap:anywhere}
+</style>
+</head>
+<body class="locked">
+
+<canvas id="stars"></canvas>
+<div class="glow a"></div>
+<div class="glow b"></div>
+<div class="glow c"></div>
+
+<div class="wrap">
+
+  <div class="hero">
+    <div class="kicker">Приглашение</div>
+    <h1>У меня к тебе<br>один вопрос</h1>
+    <p class="sub">
+      Я тут подумал: у нас обоих есть свободный вечер, а в Москве есть места,
+      где красиво и не надо никуда спешить. План простой: немного погулять
+      и зайти куда-нибудь посидеть вдвоём. Хочешь, сходим?
+    </p>
+    <div class="cta-row">
+      <button class="btn btn-primary" id="yesBtn">Да, давай</button>
+      <button class="btn btn-ghost" id="noBtn">Мне нужно подумать</button>
+    </div>
+    <div class="scroll-hint" id="scrollHint">Дальше — пять вариантов<span>↓</span></div>
+  </div>
+
+  <section id="places">
+    <h2 class="sec-title">Куда можно пойти</h2>
+    <p class="sec-sub">
+      Пять вариантов — от парка в 15 минутах от тебя до центра. В каждом сначала
+      спокойная прогулка, а рядом место, где можно сесть и поговорить.
+      Выбери, что откликается, или предложи своё.
+    </p>
+    <div class="grid" id="grid"></div>
+
+    <div class="when">
+      <h3>Когда тебе удобно?</h3>
+      <p>Выбери день и время — я подстроюсь.</p>
+      <div class="when-row">
+        <div class="field">
+          <label for="dateInput">Дата</label>
+          <input type="date" id="dateInput">
+        </div>
+        <div class="field">
+          <label for="timeInput">Время</label>
+          <input type="time" id="timeInput" step="900">
+        </div>
+      </div>
+      <div class="when-note" id="whenNote">Можно выбрать позже — просто скажи.</div>
+    </div>
+  </section>
+
+  <section class="final-section">
+    <div class="final">
+      <h2>Ну что, договорились?</h2>
+      <p id="finalText">Выбери место выше — и я всё организую. Осталось только сказать «да».</p>
+      <button class="btn btn-primary" id="finalBtn">Я согласна</button>
+    </div>
+  </section>
+
+  <footer>
+    Сделано с уважением к твоему времени и с надеждой на хороший вечер.<br>
+    Богдан
+  </footer>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-card">
+    <span class="emoji" id="modalEmoji">🌙</span>
+    <h3 id="modalTitle">Отлично</h3>
+    <p id="modalText">Тогда я всё устрою.</p>
+    <button class="btn btn-primary" id="modalClose">Закрыть</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span class="t-ico" id="toastIco">✨</span>
+  <span class="t-txt" id="toastTxt"></span>
+</div>
+
+<script>
+/* ============================================================
+   МЕСТА — заменить, когда она скажет метро.
+   ============================================================ */
+const PLACES = [
+  { tag:"15 минут от тебя", name:"Терлецкий лесопарк + кофейня",
+    desc:"Аллея между прудами, старые дубы, тихие дорожки. Потом — кофе в кафе у выхода из парка.",
+    time:"1,5–2 часа", metro:"Новогиреево / Шоссе Энтузиастов",
+    why:"Самый близкий вариант: полчаса пешком от дома, и уже лес и тишина — без метро и без долгой дороги." },
+  { tag:"Парк и чайная", name:"Сокольники: парк и чайная",
+    desc:"Один из самых уютных парков города: аллеи в листьях, тихие дорожки. Потом — чай или кофе в павильоне.",
+    time:"2 часа", metro:"Сокольники",
+    why:"Красиво и спокойно, людей немного, и от тебя — по прямой ветке без пересадок." },
+  { tag:"Лучший вид", name:"Воробьёвы горы",
+    desc:"Смотровая с панорамой города и набережная. Внизу у Лужников — кафе, где можно сесть и разговаривать.",
+    time:"1,5–2 часа", metro:"Воробьёвы горы",
+    why:"Лучший вид в городе, и всё занимает меньше двух часов — без долгой дороги." },
+  { tag:"Центр", name:"Чистые пруды и кофейня",
+    desc:"Тихий бульвар, старые дома, листья на воде. Рядом много небольших кофеен и пекарен.",
+    time:"1,5–2 часа", metro:"Чистые пруды",
+    why:"Центр без пафоса: гуляем по бульвару, садимся в маленькую кофейню." },
+  { tag:"Совсем другой мир", name:"Измайловский кремль",
+    desc:"Сказочные башни, ярмарка, сувениры. Рядом — Измайловский парк: если захочется, добавляем прогулку.",
+    time:"2 часа", metro:"Партизанская",
+    why:"Три остановки по жёлтой ветке от «Шоссе Энтузиастов» — ближе всех, кроме Терлецкого." }
+];
+
+/* ---------- звёзды ---------- */
+(function(){
+  const c = document.getElementById('stars');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  let w, h, pts = [];
+
+  function resize(){
+    w = c.width = window.innerWidth;
+    h = c.height = window.innerHeight;
+    const count = Math.min(150, Math.floor(w * h / 15000));
+    pts = [];
+    for (let i = 0; i < count; i++){
+      pts.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.random() * 1.3 + .3,
+        a: Math.random() * .55 + .15
+      });
+    }
+    draw();
+  }
+
+  function draw(){
+    ctx.clearRect(0, 0, w, h);
+    for (const p of pts){
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,235,245,' + p.a + ')';
+      ctx.fill();
+    }
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+})();
+
+/* ---------- карточки ---------- */
+const grid = document.getElementById('grid');
+let selected = null;
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, function(m){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+  });
+}
+
+PLACES.forEach(function(p, i){
+  const el = document.createElement('div');
+  el.className = 'place';
+  el.innerHTML =
+    '<div class="check">✓</div>' +
+    '<span class="tag">' + esc(p.tag) + '</span>' +
+    '<h3>' + esc(p.name) + '</h3>' +
+    '<p>' + esc(p.desc) + '</p>' +
+    '<div class="meta">' +
+      '<span>' + esc(p.time) + '</span>' +
+      '<span>м. ' + esc(p.metro) + '</span>' +
+    '</div>' +
+    (p.why ? '<div class="why">' + esc(p.why) + '</div>' : '');
+  el.addEventListener('click', function(){ select(i); });
+  grid.appendChild(el);
+});
+
+/* ---------- карточка «свой вариант» ---------- */
+const CUSTOM = PLACES.length;
+const customEl = document.createElement('div');
+customEl.className = 'place custom';
+customEl.innerHTML =
+  '<div class="check">✓</div>' +
+  '<span class="tag">Твой вариант</span>' +
+  '<h3>Предложи своё</h3>' +
+  '<p>Если есть место, куда хочется именно тебе — напиши его здесь. Я за любой.</p>' +
+  '<input type="text" id="customInput" maxlength="120" placeholder="Например: кофейня у Патриарших" autocomplete="off">' +
+  '<div class="hint">Не обязательно — можно просто выбрать из списка выше.</div>';
+customEl.addEventListener('click', function(e){
+  if (e.target && e.target.id === 'customInput') return;
+  select(CUSTOM);
+  const inp = document.getElementById('customInput');
+  if (inp) inp.focus();
+});
+grid.appendChild(customEl);
+
+document.getElementById('customInput').addEventListener('input', function(){
+  if (selected === CUSTOM) updateFinal();
+});
+
+function select(i){
+  selected = i;
+  const cards = document.querySelectorAll('.place');
+  for (let k = 0; k < cards.length; k++){
+    cards[k].classList.toggle('selected', k === i);
+  }
+  updateFinal();
+  if (i === CUSTOM){
+    const v = (document.getElementById('customInput').value || '').trim();
+    if (v) track('custom_place', { place: v });
+  } else if (PLACES[i]){
+    track('place', { place: PLACES[i].name + ', м. ' + PLACES[i].metro });
+  }
+  document.getElementById('places').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function updateFinal(){
+  const el = document.getElementById('finalText');
+  if (selected === null){
+    el.textContent = 'Выбери место выше — и я всё организую. Осталось только сказать «да».';
+    return;
+  }
+  if (selected === CUSTOM){
+    const v = (document.getElementById('customInput').value || '').trim();
+    el.textContent = v
+      ? 'Ты предложила «' + v + '». Отличный вариант — я за.'
+      : 'Жду твой вариант — напиши его в поле выше.';
+    return;
+  }
+  const p = PLACES[selected];
+  el.textContent = 'Ты выбрала «' + p.name + '». Я всё организую — осталось только сказать «да».';
+}
+
+/* ---------- отправка событий админу (без регистрации) ---------- */
+const SESSION = (function(){
+  try {
+    let s = sessionStorage.getItem('invite_session');
+    if (!s){
+      s = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem('invite_session', s);
+    }
+    return s;
+  } catch (e) {
+    return 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+})();
+
+function track(type, data){
+  const payload = Object.assign({ type: type, session: SESSION }, data || {});
+  try {
+    const body = JSON.stringify(payload);
+    if (navigator.sendBeacon && navigator.sendBeacon('/api/event', new Blob([body], {type:'application/json'}))) return;
+  } catch (e) { /* падаем на fetch ниже */ }
+  try {
+    fetch('/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(function(){ /* офлайн — не мешаем ей */ });
+  } catch (e) { /* молча: страница должна работать и без сервера */ }
+}
+
+track('visit');
+
+/* ---------- мини-плашка по центру ---------- */
+const toastEl = document.getElementById('toast');
+const toastIco = document.getElementById('toastIco');
+const toastTxt = document.getElementById('toastTxt');
+let toastTimer = null;
+let lastWhenSent = '';
+
+function showToast(text, opts){
+  if (!toastEl || !text) return;
+  const o = opts || {};
+  /* плашка всегда по центру видимой области — на мобильных тоже */
+  toastEl.style.top = '50%';
+  toastEl.style.bottom = 'auto';
+  toastIco.textContent = o.ico || '✨';
+  toastTxt.textContent = text;
+  toastEl.classList.remove('ok', 'warn');
+  if (o.kind) toastEl.classList.add(o.kind);
+  toastEl.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, o.ms || 2600);
+}
+
+/* ---------- кнопка «нет»: спокойный, честный ответ ---------- */
+const noBtn = document.getElementById('noBtn');
+noBtn.addEventListener('click', function(){
+  track('no');
+  showToast('Понял. Без давления — если захочешь, просто напиши.', { ico:'🤍', ms:3200 });
+});
+
+/* ---------- модалка ---------- */
+const modal = document.getElementById('modal');
+
+function openModal(emoji, title, text){
+  document.getElementById('modalEmoji').textContent = emoji;
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalText').textContent = text;
+  modal.classList.add('open');
+}
+function closeModal(){
+  if (!modal.classList.contains('open')) return;
+  modal.classList.remove('open');
+  track('modal_close');
+}
+document.getElementById('modalClose').addEventListener('click', closeModal);
+modal.addEventListener('click', function(e){
+  if (e.target === modal) closeModal();
+});
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') closeModal();
+});
+
+/* ---------- разблокировка скролла только после «Да» ---------- */
+function unlockScroll(){
+  document.documentElement.classList.remove('locked');
+  document.body.classList.remove('locked');
+}
+
+document.getElementById('yesBtn').addEventListener('click', function(){
+  unlockScroll();
+  track('yes');
+  showToast('Отлично. Выбери место ниже — и напиши, когда удобно.', { ico:'💚', kind:'ok', ms:3000 });
+  setTimeout(function(){
+    document.getElementById('places').scrollIntoView({behavior:'smooth', block:'start'});
+  }, 120);
+});
+
+/* ---------- дата и время ---------- */
+const dateInput = document.getElementById('dateInput');
+const timeInput = document.getElementById('timeInput');
+const whenNote = document.getElementById('whenNote');
+
+function pad(n){ return n < 10 ? '0' + n : '' + n; }
+
+(function initDateBounds(){
+  const now = new Date();
+  const today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  const max = new Date(now.getTime() + 365 * 24 * 3600 * 1000);
+  dateInput.min = today;
+  dateInput.max = max.getFullYear() + '-' + pad(max.getMonth() + 1) + '-' + pad(max.getDate());
+})();
+
+function setNote(text, isErr){
+  whenNote.textContent = text;
+  whenNote.classList.toggle('err', !!isErr);
+}
+
+function formatWhen(){
+  const d = dateInput.value;
+  const t = timeInput.value;
+  if (!d && !t) return '';
+  let out = '';
+  if (d){
+    const parts = d.split('-');
+    const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    const days = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+    const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+    out = parts[2].replace(/^0/, '') + ' ' + months[dt.getMonth()] + ', ' + days[dt.getDay()];
+  }
+  if (t) out += (out ? ' в ' : 'в ') + t;
+  return out;
+}
+
+function validateWhen(){
+  const d = dateInput.value;
+  const t = timeInput.value;
+  if (!d && !t) return { ok: true, text: '' };
+  if (d && !t) return { ok: false, text: 'Дата есть — добавь ещё время.' };
+  if (!d && t) return { ok: false, text: 'Время есть — добавь ещё дату.' };
+  const parts = d.split('-');
+  const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (isNaN(dt.getTime())) return { ok: false, text: 'Не получилось прочитать дату — выбери ещё раз.' };
+  if (dt < today) return { ok: false, text: 'Эта дата уже прошла — выбери день впереди.' };
+  if (dt.getTime() === today.getTime()){
+    const hm = t.split(':');
+    const minutes = Number(hm[0]) * 60 + Number(hm[1]);
+    if (minutes <= now.getHours() * 60 + now.getMinutes()){
+      return { ok: false, text: 'Это время сегодня уже прошло — выбери попозже.' };
+    }
+  }
+  return { ok: true, text: formatWhen() };
+}
+
+function refreshWhen(){
+  const v = validateWhen();
+  if (!v.ok){ setNote(v.text, true); return v; }
+  setNote(v.text ? 'Записала: ' + v.text : 'Можно выбрать позже — просто скажи.', false);
+  if (v.text && v.text !== lastWhenSent){
+    lastWhenSent = v.text;
+    track('when', { when: v.text });
+  }
+  return v;
+}
+
+dateInput.addEventListener('change', refreshWhen);
+dateInput.addEventListener('input', refreshWhen);
+timeInput.addEventListener('change', refreshWhen);
+timeInput.addEventListener('input', refreshWhen);
+
+/* ---------- финальная кнопка ---------- */
+document.getElementById('finalBtn').addEventListener('click', function(){
+  if (selected === null){
+    openModal('👀', 'Сначала место', 'Выбери, куда хочется — тогда я пойму, что готовить.');
+    return;
+  }
+  const when = validateWhen();
+  if (!when.ok){
+    setNote(when.text, true);
+    openModal('🕰', 'Ещё чуть-чуть', when.text);
+    return;
+  }
+  let place;
+  if (selected === CUSTOM){
+    const v = (document.getElementById('customInput').value || '').trim();
+    if (!v){
+      openModal('✍️', 'Жду твой вариант', 'Напиши место, куда хочется — и я всё устрою.');
+      return;
+    }
+    place = '«' + v + '»';
+  } else {
+    const p = PLACES[selected];
+    place = '«' + p.name + '», м. ' + p.metro;
+  }
+  track('final', {
+    place: place,
+    when: when.text || 'не выбрано',
+    session: SESSION
+  });
+  confetti();
+  openModal('🌙', 'Договорились',
+    place + (when.text ? '. ' + when.text.charAt(0).toUpperCase() + when.text.slice(1) : '') +
+    '. Остальное я возьму на себя.');
+});
+
+function confetti(){
+  const colors = ['#ff6b9d','#f5c26b','#5b6bff','#ffa8c5','#ffffff'];
+  for (let i = 0; i < 70; i++){
+    const d = document.createElement('div');
+    d.className = 'confetti';
+    d.style.left = (Math.random() * 100) + 'vw';
+    d.style.background = colors[Math.floor(Math.random() * colors.length)];
+    const dur = 2200 + Math.random() * 1800;
+    d.animate([
+      {transform:'translateY(0) rotate(0deg)', opacity:1},
+      {transform:'translateY(' + (window.innerHeight + 60) + 'px) rotate(' + (Math.random()*720-360) + 'deg)', opacity:0}
+    ], {duration: dur, easing:'cubic-bezier(.3,.6,.5,1)'});
+    document.body.appendChild(d);
+    setTimeout(function(){ d.remove(); }, dur);
+  }
+}
+</script>
+</body>
+</html>
