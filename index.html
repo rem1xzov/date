@@ -528,15 +528,32 @@ const TRACK_URL = (function(){
 
 function track(type, data){
   const payload = Object.assign({ type: type, session: SESSION }, data || {});
+  const body = JSON.stringify(payload);
+
+  /* Внешний сборщик (Apps Script) не принимает application/json от браузера:
+     CORS-preflight там не отвечает. Шлём простой POST с text/plain —
+     тело остаётся JSON, Apps Script парсит его из postData.contents. */
+  if (TRACK_URL !== '/api/event'){
+    try {
+      fetch(TRACK_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: body,
+        keepalive: true
+      }).catch(function(){ /* офлайн — не мешаем ей */ });
+    } catch (e) { /* молча: страница должна работать и без сервера */ }
+    return;
+  }
+
   try {
-    const body = JSON.stringify(payload);
     if (navigator.sendBeacon && navigator.sendBeacon(TRACK_URL, new Blob([body], {type:'application/json'}))) return;
   } catch (e) { /* падаем на fetch ниже */ }
   try {
     fetch(TRACK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: body,
       keepalive: true
     }).catch(function(){ /* офлайн — не мешаем ей */ });
   } catch (e) { /* молча: страница должна работать и без сервера */ }

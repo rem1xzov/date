@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- Приёмник событий для статического хостинга (GitHub Pages).
+     Вписать URL веб-приложения Apps Script — тот же, что в index.html. -->
+<meta name="track-endpoint" content="">
+<meta name="admin-key" content="">
 <title>Админка — что она выбрала</title>
 <style>
   :root{
@@ -128,9 +132,24 @@
 
   /* Источник данных.
      Пусто  → свой сервер (node server.js): /api/events, /api/stream, /api/reset.
-     URL    → Google Apps Script (apps-script/Code.gs): ?key=…&action=list|reset, опрос раз в 5 с. */
-  var API = '';
-  var KEY = '';
+     URL    → Google Apps Script (apps-script/Code.gs): ?key=…&action=list|reset, опрос раз в 5 с.
+
+     На GitHub Pages сервера нет, поэтому адрес приёмника берём из meta-тега
+     (тот же, что в index.html) или из ссылки: admin.html?api=<URL>&key=<КЛЮЧ>. */
+  var API = (function(){
+    var q = new URLSearchParams(location.search).get('api');
+    if (q && /^https?:\/\//i.test(q)) return q;
+    var meta = document.querySelector('meta[name="track-endpoint"]');
+    var v = meta && meta.getAttribute('content');
+    return (v && /^https?:\/\//i.test(v)) ? v : '';
+  })();
+
+  var KEY = (function(){
+    var q = new URLSearchParams(location.search).get('key');
+    if (q) return q;
+    var meta = document.querySelector('meta[name="admin-key"]');
+    return (meta && meta.getAttribute('content')) || '';
+  })();
 
   var events = [];
   var seen = Object.create(null);
@@ -228,6 +247,10 @@
 
   function load(){
     showErr('');
+    if (!API && location.protocol !== 'file:' && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(location.origin)){
+      showErr('Админка открыта со статического хостинга, а сервера рядом нет. Укажи приёмник: admin.html?api=<URL Apps Script>&key=<ключ>.');
+      return;
+    }
     var url = API
       ? API + '?key=' + encodeURIComponent(KEY) + '&action=list&t=' + Date.now()
       : '/api/events?limit=500';
@@ -244,7 +267,9 @@
         render();
       })
       .catch(function(e){
-        showErr('Не смог загрузить события: ' + e.message + '. Проверь, что сервер запущен (node server.js).');
+        showErr('Не смог загрузить события: ' + e.message + '. ' + (API
+          ? 'Проверь, что веб-приложение Apps Script развёрнуто с доступом «Anyone» и ключ верный.'
+          : 'Проверь, что сервер запущен (node server.js).'));
       });
   }
 
@@ -254,6 +279,10 @@
       dot.classList.add('on');
       liveText.textContent = 'live · 5 с';
       setInterval(load, 5000);
+      return;
+    }
+    if (location.protocol !== 'file:' && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(location.origin)){
+      liveText.textContent = 'нет приёмника';
       return;
     }
     if (!window.EventSource){ liveText.textContent = 'без live-режима'; return; }
@@ -269,6 +298,10 @@
 
   document.getElementById('resetBtn').addEventListener('click', function(){
     if (!window.confirm('Очистить ленту событий?')) return;
+    if (!API && location.protocol !== 'file:' && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(location.origin)){
+      showErr('Очистка недоступна: не указан приёмник (admin.html?api=…&key=…).');
+      return;
+    }
     var url = API
       ? API + '?key=' + encodeURIComponent(KEY) + '&action=reset'
       : '/api/reset';

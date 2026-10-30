@@ -28,6 +28,7 @@ function doPost(e) {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var type = String(body.type || '').slice(0, 40);
     if (!type) return json({ ok: false, error: 'no type' });
+    if (type === 'visit') body.note = body.note || 'открыла приглашение';
 
     var sheet = getSheet();
     sheet.appendRow([
@@ -91,3 +92,8 @@ function json(obj) {
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+/* Проверка после деплоя: открой в браузере
+   <URL>/exec?key=<ADMIN_KEY>&action=list — должен прийти JSON {"ok":true,"events":[...]}.
+   Если приходит HTML страницы входа Google — в деплое стоит доступ «Anyone with Google account»,
+   нужно «Anyone». */
