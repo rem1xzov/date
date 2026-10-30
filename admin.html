@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- Приёмник событий для статического хостинга (GitHub Pages).
      Вписать URL веб-приложения Apps Script — тот же, что в index.html. -->
-<meta name="track-endpoint" content="">
-<meta name="admin-key" content="">
+<meta name="track-endpoint" content="https://script.google.com/macros/s/AKfycbxUoytlvR9Cu_T6f1sIo8M069hH7f4diObooSbNJY8v20Ot1s7-13dLykB70cABN5Y/exec">
+<meta name="admin-key" content="dt-7f3a91c4e2b85d60">
 <title>Админка — что она выбрала</title>
 <style>
   :root{
@@ -347,6 +347,7 @@
     }
     if (IS_APPS_SCRIPT && !KEY){
       showErr('Не указан ключ админки. Добавь &key=<ADMIN_KEY> к ссылке — иначе Apps Script ответит «forbidden».');
+      liveText.textContent = 'нет ключа';
       return;
     }
     var url = IS_APPS_SCRIPT
@@ -390,6 +391,7 @@
       /* Apps Script не умеет SSE — просто опрашиваем раз в 5 секунд.
          Индикатор «live» ставит load() только после успешного ответа. */
       liveText.textContent = 'подключение…';
+      load();
       setInterval(load, 5000);
       return;
     }
@@ -435,7 +437,6 @@
       .catch(function(e){ showErr('Не смог очистить: ' + e.message); });
   });
 
-  load();
   connect();
 })();
 </script>
