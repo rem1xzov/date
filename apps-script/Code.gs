@@ -6,26 +6,38 @@
  *  - doGet   — отдаёт админке JSON со списком событий (?action=list) или чистит ленту (?action=reset)
  *
  * Установка (5 минут, без сервера и без карты):
- *  1. Создать таблицу на drive.google.com — из её URL взять ID:
+ *  1. Открыть script.google.com → New project → вставить этот файл целиком.
+ *  2. Вписать ADMIN_KEY ниже (любая длинная строка) — она попадёт в ссылку админки.
+ *     SHEET_ID можно оставить пустым: скрипт сам создаст таблицу "date-events"
+ *     на твоём Диске при первом событии и запомнит её ID в свойствах скрипта.
+ *     Если хочешь свою таблицу — вставь её ID из URL:
  *     https://docs.google.com/spreadsheets/d/<ЭТОТ_ID>/edit
- *  2. Открыть script.google.com → New project → вставить этот файл целиком.
- *  3. Вписать SHEET_ID и ADMIN_KEY ниже.
- *  4. Deploy → New deployment → тип "Web app":
+ *  3. Deploy → New deployment → тип "Web app":
  *       Execute as: Me
  *       Who has access: Anyone
  *     Скопировать URL вида https://script.google.com/macros/s/AKfy.../exec
- *  5. Этот URL вписать в index.html: <meta name="track-endpoint" content="URL">
- *     и в admin.html: const API = 'URL';
+ *  4. Проверка: открыть <URL>?key=<ADMIN_KEY>&action=ping — должен прийти {"ok":true,"pong":true}
+ *  5. Этот URL вписать в admin.html: ?api=<URL>&key=<ADMIN_KEY>
  */
 
-var SHEET_ID  = 'ВСТАВЬ_ID_ТАБЛИЦЫ';
+var SHEET_ID   = '';                  // пусто = создать таблицу автоматически
 var SHEET_NAME = 'events';
-var ADMIN_KEY = 'ВСТАВЬ_СВОЙ_КЛЮЧ';   // придумай длинную строку — она попадёт в ссылку админки
-var MAX_ROWS  = 5000;
+var ADMIN_KEY  = 'dt-7f3a91c4e2b85d60'; // ключ доступа к админке (doGet)
+var MAX_ROWS   = 5000;
+
+/* Секрет для записи событий. Пусто = принимаем всех.
+   Если задать — index.html должен слать его в поле "k", иначе doPost ответит 403.
+   Зачем: URL /exec публичный, без секрета любой желающий может писать в таблицу. */
+var POST_KEY   = '';
+
+var PROP_SHEET_ID = 'SHEET_ID';
 
 function doPost(e) {
   try {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (POST_KEY && String(body.k || '') !== POST_KEY) {
+      return json({ ok: false, error: 'forbidden' });
+    }
     var type = String(body.type || '').slice(0, 40);
     if (!type) return json({ ok: false, error: 'no type' });
     if (type === 'visit') body.note = body.note || 'открыла приглашение';
@@ -48,7 +60,10 @@ function doPost(e) {
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
-  if (String(p.key || '') !== ADMIN_KEY) return json({ ok: false, error: 'forbidden' });
+  if (!ADMIN_KEY || String(p.key || '') !== ADMIN_KEY) return json({ ok: false, error: 'forbidden' });
+
+  /* action=ping — проверка связи из админки: не трогает таблицу, отвечает быстро */
+  if (p.action === 'ping') return json({ ok: true, pong: true, ts: Date.now() });
 
   var sheet = getSheet();
 
@@ -63,9 +78,11 @@ function doGet(e) {
   for (var i = 1; i < values.length; i++) {
     var r = values[i];
     if (!r[1]) continue;
+    var ts = r[0] instanceof Date ? r[0].getTime() : new Date(r[0]).getTime();
+    if (!isFinite(ts)) ts = Date.now();
     events.push({
       id: 'r' + i,
-      ts: r[0] instanceof Date ? r[0].getTime() : new Date(r[0]).getTime(),
+      ts: ts,
       type: String(r[1]),
       session: String(r[2] || ''),
       place: String(r[3] || ''),
@@ -74,11 +91,28 @@ function doGet(e) {
     });
   }
   if (events.length > MAX_ROWS) events = events.slice(-MAX_ROWS);
-  return json({ ok: true, events: events });
+  return json({ ok: true, source: 'sheets', total: events.length, events: events });
 }
 
+/* Возвращает лист событий. Если SHEET_ID не задан — создаёт таблицу один раз
+   и запоминает её ID в свойствах скрипта, чтобы не плодить копии. */
 function getSheet() {
-  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var id = SHEET_ID || PropertiesService.getScriptProperties().getProperty(PROP_SHEET_ID);
+  var ss = null;
+
+  if (id) {
+    try {
+      ss = SpreadsheetApp.openById(id);
+    } catch (err) {
+      ss = null; // таблицу удалили или нет доступа — создадим новую
+    }
+  }
+
+  if (!ss) {
+    ss = SpreadsheetApp.create('date-events');
+    PropertiesService.getScriptProperties().setProperty(PROP_SHEET_ID, ss.getId());
+  }
+
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
@@ -94,6 +128,6 @@ function json(obj) {
 }
 
 /* Проверка после деплоя: открой в браузере
-   <URL>/exec?key=<ADMIN_KEY>&action=list — должен прийти JSON {"ok":true,"events":[...]}.
+   <URL>?key=<ADMIN_KEY>&action=ping — должен прийти JSON {"ok":true,"pong":true}.
    Если приходит HTML страницы входа Google — в деплое стоит доступ «Anyone with Google account»,
    нужно «Anyone». */
